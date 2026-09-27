@@ -89,6 +89,32 @@ describe('response envelopes and counts', () => {
     else await expect(pending).rejects.toThrow('result count mismatch; expected 1, received 0');
   });
 
+  it.each(['payload', 'lines'] as const)('counts the JSON sent after %s serialisation', async location => {
+    const toJSON = vi.fn(() => location === 'payload'
+      ? { ...emptyRequest, lines: [line, line] } : [line, line]);
+    const request = location === 'payload'
+      ? { ...emptyRequest, lines: [line], toJSON }
+      : { ...emptyRequest, lines: Object.assign([line], { toJSON }) };
+    const client = new FanoClient({ apiKey: 'fabricated-test-value', fetchImpl: async (_input, init) => {
+      expect(JSON.parse(String(init?.body)).lines).toHaveLength(2);
+      return new Response(JSON.stringify(envelope([wireRow, wireRow])));
+    } });
+    await expect(client.ingestTrialBalance(request)).resolves.toMatchObject({ results: [
+      adaptLegacyLineResponse(wireRow), adaptLegacyLineResponse(wireRow),
+    ] });
+    expect(toJSON).toHaveBeenCalledTimes(1);
+    await expect(clientFor(envelope([wireRow])).ingestTrialBalance(request))
+      .rejects.toThrow('result count mismatch; expected 2, received 1');
+  });
+
+  it.each([null, {}, { lines: 'invalid' }])('rejects an invalid serialised request: %j', async body => {
+    const fetchImpl = vi.fn(async () => new Response());
+    const client = new FanoClient({ apiKey: 'fabricated-test-value', fetchImpl });
+    await expect(client.ingestTrialBalance({ ...emptyRequest, toJSON: () => body } as TrialBalancePayload))
+      .rejects.toThrow('request body must contain a lines array');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it.each([null, false, 3, [], {}, { results: [] }])('reports malformed envelopes: %j', async raw => {
     await expect(clientFor(raw).ingestTrialBalance(emptyRequest)).rejects.toThrow('FanoClient: response shape unrecognised');
   });

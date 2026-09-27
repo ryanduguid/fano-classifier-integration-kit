@@ -196,8 +196,13 @@ export class FanoClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const expectedResultCount = payload.lines.length;
       const requestBody = JSON.stringify(payload);
+      // Serialisation hooks can change the lines actually submitted.
+      const submitted: unknown = JSON.parse(requestBody);
+      if (!isRecord(submitted) || !Array.isArray(submitted.lines)) {
+        throw new Error('FanoClient: request body must contain a lines array.');
+      }
+      const expectedResultCount = submitted.lines.length;
       const response = await this.fetchImpl(url, {
         method: 'POST',
         headers: {

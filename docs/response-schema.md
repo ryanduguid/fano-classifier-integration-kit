@@ -40,7 +40,7 @@ return {
 
 ## Response — per-line `LineResult`
 
-**10 fields always present per row** — this is enforced by the server-side `base_response` dict-spread pattern at `api/main.py` line 566. No optional fields; no shape variance.
+**11 fields per row in the pinned contract.** The recorded response construction uses the server's `base_response` dict at `api/main.py` line 566. All fields below are required by this contract.
 
 | Field | Type | Source | Notes |
 |---|---|---|---|
@@ -59,14 +59,14 @@ return {
 
 The three values correspond to **branches** in the server's per-line processing pipeline:
 
-**`accepted_fact`** — cascade classified the line AND L3 Prolog firewall passed. This row can write straight through to GL with no operator review. Wire construction at `api/main.py` lines 622–626.
+**`accepted_fact`**: Fano classified the line and the L3 Prolog firewall passed its prediction. This does not validate a different operator hint or authorise a ledger posting. The consuming application owns review and posting decisions. Wire construction at `api/main.py` lines 622–626.
 
 **`draft_fact`** — one of two paths fired:
 
 - **Sub-floor abstention** (lines 585–590): cascade confidence fell below the SR #4 threshold (nominal 0.50 Platt-scaled). Fires *before* the L3 firewall query even runs. `quarantine_reason` = `"Sub-floor model confidence (0.XX)"`.
 - **L3 firewall rejection** (lines 628–635): cascade classified but the Prolog firewall rejected the row as structurally illegal under SBRM. `quarantine_reason` = `"Entity/Topological Drift: Anchor=<topo>, Guess=<code>, Entity=<entity>"`.
 
-Both `draft_fact` paths mean the row enters the operator-review queue. The `quarantine_reason` string tells you WHICH path fired.
+Both `draft_fact` paths need review. The `quarantine_reason` string identifies the recorded branch. This kit does not create or manage a review queue.
 
 **`quarantine`** — ⚠ **This is a naming trap.** Consumers reading `if row.fano_status == "quarantine"` expecting "L3 firewall rejected as structurally illegal" are **reading it wrong**. Structural-rule rejections come back as `draft_fact` (see above).
 
@@ -80,7 +80,7 @@ The field is populated on any non-`accepted_fact` row. Four known shapes:
 
 | Shape | Fires when | Consumer signal |
 |---|---|---|
-| `null` | `accepted_fact` row | Row cleared. No review needed. |
+| `null` | `accepted_fact` row | Fano's prediction passed the firewall. This does not validate a different operator hint or authorise posting. |
 | `"Sub-floor model confidence (0.XX)"` where `0.XX` is the actual confidence | `draft_fact` sub-floor path (line 585) | Cascade lacked confidence. Route to operator; classify by hand. |
 | `"Entity/Topological Drift: Anchor=<topo>, Guess=<code>, Entity=<entity>"` | `draft_fact` L3 firewall path (line 628) | L3 rejected as structurally illegal under SBRM. Route to operator; investigate the drift between operator-submitted classification and cascade's alternate. |
 | `"Firewall Timeout Execution Lock"` | `quarantine` (line 638) | Prolog subprocess timeout — substrate-health issue, not a classification issue. Retry may succeed. Persistent timeout on the same row is a defect worth reporting. |

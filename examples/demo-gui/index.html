@@ -20,36 +20,18 @@
     </header>
 
     <section class="warning">
-      <h2>⚠ CORS posture (read first)</h2>
+      <h2>Browser connection</h2>
       <p>
-        Fano-engine at the production URL above does <strong>not currently emit
-        CORS headers</strong>. A browser hitting it directly from a different origin will
-        fail at the OPTIONS preflight (HTTP 405). This is the same Layer-7
-        consumer-class enforcement gap that surfaced for <code>clawdog-calculator-api</code>
-        at <code>mc12-2026-06-24</code> (L#66 CANDIDATE in Brain canon).
+        Serve this directory over HTTP and enter the intended API endpoint.
+        The API must allow this page's origin through CORS. If the browser blocks
+        the request, check the deployment's allowed origins or use your approved
+        application proxy. Keep browser security enabled.
       </p>
-      <p>To run this demo today, you have <strong>three options</strong>:</p>
-      <ol>
-        <li>
-          <strong>Run it from the same origin as Fano</strong> — not possible while
-          Fano is on Cloud Run unless you proxy.
-        </li>
-        <li>
-          <strong>Local proxy</strong> — run a tiny CORS-permissive proxy on your
-          dev machine; point <em>Base URL</em> at <code>http://localhost:8787</code>;
-          have it forward to Fano. See <code>examples/demo-gui/PROXY.md</code>.
-        </li>
-        <li>
-          <strong>Disable browser CORS</strong> — for example launch Chrome with
-          <code>--disable-web-security --user-data-dir=/tmp/chrome-cors</code>.
-          Local-only experimentation; never use this profile for general browsing.
-        </li>
-      </ol>
       <p>
-        The Brain-canon next-sprint surface is to add <code>CORSMiddleware</code>
-        at <code>fano-engine/api/main.py</code> + redeploy via the Streamace +
-        canary + atomic-flip ladder (mirror of the Phase 4c sprint we just shipped).
-        Once that lands, this demo runs natively against production with no proxy.
+        This page shows the wire response. The TypeScript SDK returns a different
+        layout with Fano's prediction under <code>cascade</code> and derived
+        warnings. Read <code>fano_status</code> and <code>quarantine_reason</code>
+        together; <code>quarantine</code> denotes a firewall timeout in the pinned contract.
       </p>
     </section>
 
@@ -62,7 +44,7 @@
       <div class="row">
         <label for="api-key">X-API-Key</label>
         <input id="api-key" type="password" placeholder="paste your testing-tier API key" autocomplete="off">
-        <small>Saved to <code>localStorage</code> on this device only; never transmitted to anyone except the Base URL.</small>
+        <small>Saved on this device when browser storage is available. Sent only to the configured endpoint.</small>
       </div>
     </section>
 

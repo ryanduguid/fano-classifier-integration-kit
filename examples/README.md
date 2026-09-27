@@ -41,16 +41,21 @@ verdicts where applicable).
 # 1. Install the SDK
 npm install github:lodgeit-labs/fano-classifier-integration-kit
 
-# 2. Use it
+```
+
+```typescript
 import { FanoClient } from "@lodgeit-labs/fano-classifier-client";
 
+const apiKey = process.env.FANO_API_KEY;
+if (!apiKey) throw new Error('FANO_API_KEY is required');
+
 const fano = new FanoClient({
-  apiKey: process.env.FANO_API_KEY,
+  apiKey,
   // baseUrl defaults to https://fano-engine-afmurhqkaq-ts.a.run.app
-  // schemaVersion defaults to 'legacy' (current production; adapter handles it)
+  // The default 'legacy' mode adapts wire fields into the SDK response.
 });
 
-const response = await fano.classifyTrialBalance({
+const response = await fano.ingestTrialBalance({
   entity_structure: "sole_trader",
   lines: [
     { description: "Drawings", predicted_code: "sbrm_0000",
@@ -60,9 +65,14 @@ const response = await fano.classifyTrialBalance({
   ],
 });
 
-// response.results[0]: { predicted_code: "sbrm_3140", confidence: 0.641,
-//                       cascade_topology: "equity", fano_status: "accepted_fact",
-//                       quarantine_reason: null, ... }
+const row = response.results[0];
+if (row) {
+  console.log(row.predicted_code);         // Submitted hint: "sbrm_0000".
+  console.log(row.cascade.predicted_code); // Fano's prediction.
+  console.log(row.cascade.model_architecture); // Reported model identifier.
+  console.log(row.fano_status, row.quarantine_reason); // Verdict on Fano's prediction.
+  console.log(row.warnings); // SDK advisories; an empty list does not mean acceptance.
+}
 ```
 
 See [`src/client.ts`](../src/client.ts) for the full SDK surface +

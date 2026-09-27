@@ -1,10 +1,10 @@
 # fano-classifier-integration-kit
 
-**Integration kit for Fano — an SBRM classification firewall (an admission gate over upstream classifiers, not a classifier itself).**
+**Integration kit for Fano, an SBRM classifier and firewall.**
 
-Fano returns its own classification for each trial-balance row and reports whether that row is structurally legal under SBRM. It **does classify** — your submitted `(predicted_code, source_topology, confidence)` are echoed back as `operator_hint_*` and treated as a hint only; `fano_status` is Fano's verdict on Fano's own prediction, not an audit of the code you assigned. Read `## Before you run Fano` below before your first submission.
+Fano returns its own classification for each trial-balance row. Your submitted classification is echoed in `operator_hint_*` fields. The returned `fano_status` applies to Fano's prediction. The SDK adapts this wire response into a different layout, described below.
 
-> **Status:** v0.1.5 shipped 2026-08-25 — response schema ratified against wire truth (`api/main.py` sha256 `8d07ab84...`). Prior versions documented an aspirational five-warning-kinds architecture that Rev 27 Phase 4a Path α does not implement; that design was decommissioned in June 2026 as an unnoted side effect of the L1+L2 cascade collapse. This release brings the kit's response documentation to wire truth. See `docs/CHANGELOG.md` v0.1.5 entry for the full rationale + `docs/response-schema.md` for the ratified schema. Historical context lives in the private Brain canon with a review trigger. Fano-engine production still serves **iter11.B Rev 27** with CORS Phase 5. Methodology docs remain staged at η.3.
+> **Package version:** v0.1.5. The [25 August 2026 changelog](docs/CHANGELOG.md) records the response contract ratified against `api/main.py` sha256 `8d07ab84...`. That contract has a single classifier and does not return the structured warnings described by the earlier design. See [the pinned response schema](docs/response-schema.md) for its fields and recorded behaviour; these documents do not verify a later deployment.
 
 ---
 
@@ -12,11 +12,11 @@ Fano returns its own classification for each trial-balance row and reports wheth
 
 **How you measure Fano determines whether your run produces a useful signal or a wrong verdict about a working system.**
 
-**What Fano actually returns.** Fano returns its own classification; your `predicted_code`/`confidence`/`source_topology` are echoed as `operator_hint_*` and treated as a hint. `fano_status` is Fano's verdict on Fano's own prediction. Until the topology rule ships, compare `cascade_topology` to your `source_topology` yourself and treat a disagreement as review-required.
+**Read the verdict with the prediction it evaluates.** On the wire, `predicted_code`, `confidence` and `cascade_topology` describe Fano's prediction. The SDK moves that prediction under `cascade` and places operator hints at the top level. An accepted Fano prediction does not validate a different operator hint.
 
-Fano is a classifier with a firewall. Your upstream pipeline (source chart-of-accounts, bookkeeper decision, or upstream ML classifier) has already assigned each line item a `(predicted_code, source_topology)`, which Fano takes only as a hint (`operator_hint_*`) — Fano re-classifies the line itself, checks its own prediction against SBRM structural rules, and returns either **accept** it (`accepted_fact`), **flag it for review** (`draft_fact` with warnings), or **quarantine** it (rejected as structurally illegal). If you evaluate Fano by measuring "how often did Fano's code match my code," you are measuring your upstream classifier's accuracy — not Fano's. Read [`docs/what-to-measure.md`](docs/what-to-measure.md) for the four numbers to compute plus the load-bearing 20-row operator-agreement sample.
+The ratified wire contract distinguishes `accepted_fact` (Fano's prediction passed the firewall), `draft_fact` (low confidence or a firewall rejection), and `quarantine` (a firewall timeout). Compare predictions with independently reviewed expected classifications; agreement with an upstream classifier alone does not establish accuracy. See [`docs/response-schema.md`](docs/response-schema.md) for the recorded branches and reasons.
 
-**Your run is the benchmark of record.** iter11.B R3 (the current production architecture) entered production 2026-06-25 without a published performance comparison against the cascade it replaced. The pre-iter11.B figures you may have read (97.3% structural-harness pass; 21% end-to-end classification) measured a different architecture and do not apply. Your run — specifically its 20-row operator-agreement sample — is the first performance evidence for iter11.B R3 in production and will be referenced by every future calibration. Please treat the scoring accordingly. See [`docs/what-to-measure.md`](docs/what-to-measure.md) §"Why this is the benchmark of record."
+**Record the model with each benchmark.** The kit documents a change from the older cascade to iter11.B R3. Results measured against the older architecture do not establish the newer model's accuracy. The SDK preserves the reported identifier in `cascade.model_architecture`; use it to identify the model behind recorded results. See [`docs/what-to-measure.md`](docs/what-to-measure.md) for the documented measurements.
 
 **Default data-handling posture for the first trial:** submit synthetic or fully sanitised data on your first dataset, regardless of whether your subsequent datasets are real. The first run establishes the wire and catches integration defects; do that against data whose exposure risk is zero. Governance decisions about real-client data belong before real-client data hits the wire, not after.
 
@@ -45,7 +45,7 @@ Each of the four pairs below is a chance to land on the wrong artefact and blame
 | ✅ Use this | ❌ Not this |
 |---|---|
 | `lodgeit-labs/fano-classifier-integration-kit` (PUBLIC) | `lodgeit-labs/fano-classifier-integration` (PRIVATE, superseded) |
-| This repo. Contains v0.1.0–0.1.4. | Predecessor kit, v0.1.0 + v0.1.1 only, pushed 2026-05-13 last. Not maintained. |
+| This repo. Contains v0.1.0 through v0.1.5. | Predecessor kit, v0.1.0 + v0.1.1 only, pushed 2026-05-13 last. Not maintained. |
 
 ### 3. Two model architectures
 
@@ -70,32 +70,34 @@ Each of the four pairs below is a chance to land on the wrong artefact and blame
 
 ## Quick path for adopters
 
-- **Browser playground** — `examples/demo-gui/index.html` is a zero-build HTML/JS app for hitting the production endpoint interactively. Bring your own API key; see `examples/demo-gui/README.md` for the run instructions + CORS note (you'll need a tiny local proxy until Fano-engine ships its own `CORSMiddleware`).
+- **Browser playground**: serve `examples/demo-gui/` over HTTP, then enter the endpoint and your API key. See its README for browser-origin requirements.
 - **Canonical fixtures** — `examples/canonical-fixtures/` carries three request/response pairs captured at production wire-truth on `2026-06-25T10:59:03Z` (KC1 Bank Accounts, KC2 Drawings firewall polarity, KC6 Loans-to-Beneficiaries sub-floor).
 - **Daniyal (LodgeiT TypeScript stack)** — `npm install github:lodgeit-labs/fano-classifier-integration-kit` and import `FanoClient`. See `examples/README.md` for the 10-line usage snippet.
 - **SamSaam (Depreciation_Transforms FastAPI/Azure)** — generate a Python client from `openapi/fano-classifier.openapi.json` via `openapi-python-client`, or hit the endpoint with plain `curl`. Both paths shown in `examples/README.md`.
 
 ---
 
-## What is Fano?
+## Wire responses and SDK responses
 
-Fano is a **stateless SBRM classification firewall** for trial-balance line-item ingestion. It is an admission gate over an upstream classification, not a classifier itself. Concretely, Fano:
+The wire response follows the pinned contract in [`docs/response-schema.md`](docs/response-schema.md). The SDK keeps its existing public response layout:
 
-1. **Respects operator wire-truth.** The `(predicted_code, source_topology, entity_structure)` tuple submitted at `/ingest/trial_balance` is treated as authoritative — Fano never silently overrides what the operator submitted.
-2. **Produces an independent cascade reading.** A single entity-prefixed classifier (post-iter11.B; pre-iter11.B this was L1 → L2) produces an alternate reading; an L3 Prolog firewall over SBRM physics decides whether the row is structurally legal.
-3. **Emits structured warnings on disagreement.** When the cascade's reading differs from the operator's submission, Fano emits a rich warning payload carrying the cascade's alternate hypothesis, the disagreement reason (SBRM rule ID + classifier signal breakdown), and a suggested repair-journal entry the operator can review.
+| SDK field | Source |
+| --- | --- |
+| Top-level `predicted_code`, `source_topology`, `confidence` | Operator hints from the wire |
+| `cascade.predicted_code`, `cascade.topology`, `cascade.aggregate_confidence` | Fano's reported prediction and confidence |
+| `cascade.model_architecture` | Reported model identifier |
+| `fano_status`, `quarantine_reason` | Unchanged wire verdict and reason, applying to Fano's prediction |
+| `warnings` | Advisories derived by the SDK |
 
-This is the **operator-authoritative architecture**: the source chart-of-accounts (QBO / Xero / MYOB / etc.) remains the structural source-of-truth; Fano provides commentary, not corrections.
+The public option name `schemaVersion: 'legacy'` selects wire adaptation and also accepts an SDK-shaped response. `'canonical'` requires the SDK shape directly. These names do not promise a server migration. The exported response guards distinguish structural families; they do not validate every nested field or establish accounting correctness.
 
-## Why a methodology, not just a classifier?
+Configure the final endpoint URL: the SDK and browser demo reject HTTP redirects. The SDK's cancellation deadline includes response-body reads and defaults to 30 seconds. The demo also cancels stalled requests after a 30-second timer.
 
-Adopting teams (LodgeiT-monolith, Coracle, third-party developer agents) consume Fano in three layers:
+Warnings can be empty for a firewall timeout. Always inspect the verdict and reason separately. Compatibility L1/L2 fields copy one reported confidence; the wire does not supply independent signals or a rule identifier. Suggested journal fields contain zero-valued review placeholders and do not establish posting amounts or direction.
 
-- **Layer 1 — Ingest & Firewall.** The cascade verifies structural legality and produces a firewall verdict (`accepted_fact` / `draft_fact` / `quarantine`) plus zero-or-more structured warnings.
-- **Layer 2 — Operator-review queue.** Rows with warnings or sub-floor confidence enter a review surface where a human operator (typically a senior accountant) reviews disagreements and approves or rejects the cascade's alternate hypotheses.
-- **Layer 3 — GL write with provenance.** Approved rows write to the general ledger carrying cryptographic provenance back to Fano's cascade decision plus the operator's approval signature.
+## Consumer workflow
 
-This kit gives adopting teams the API contract, type definitions, examples, and implementation patterns to build their own UX against Fano without re-deriving the architecture.
+Submit a trial balance, inspect Fano's prediction and verdict, and review disagreements against source records. The consuming application owns approval and ledger posting. This kit does not implement an approval queue, a ledger write or a cryptographic approval signature.
 
 ## Audience
 
@@ -118,7 +120,7 @@ fano-classifier-integration-kit/
 ├── README.md              # this file
 ├── LICENSE                # Apache 2.0
 ├── .gitignore             # standard Node/TypeScript
-├── package.json           # @lodgeit-labs/fano-classifier-client@0.1.1
+├── package.json           # @lodgeit-labs/fano-classifier-client@0.1.5
 ├── docs/                  # architecture + getting-started + lexicon resolution
 │   ├── architecture.md    # Ratified against api/main.py sha256:8d07ab84... (Rev 27)
 │   ├── response-schema.md # Ratified response contract with wire line-number citations

@@ -31,8 +31,14 @@ it('rejects redirects before sending the key or payload to another origin', asyn
       response.end();
     });
     try {
-      const client = new FanoClient({ baseUrl: source.url, apiKey: 'fabricated-test-value', timeoutMs: 1000 });
+      let sentRedirect: RequestRedirect | undefined;
+      const client = new FanoClient({ baseUrl: source.url, apiKey: 'fabricated-test-value', timeoutMs: 1000,
+        fetchImpl: (input, init) => {
+          sentRedirect = init?.redirect;
+          return fetch(input, init);
+        } });
       await expect(client.ingestTrialBalance({ entity_structure: 'company', lines: [] })).rejects.toThrow();
+      expect(sentRedirect).toBe('error');
       expect(sourceRequests).toBe(1);
       expect(redirectedRequests).toBe(0);
     } finally {

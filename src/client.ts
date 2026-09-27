@@ -5,12 +5,11 @@
  * - X-API-Key authentication
  * - Equilibrium-sentinel pattern for single-line probes
  * - Structured error handling (HTTP 400 equilibrium / 502 substrate / 5xx)
- * - Schema-version selection (canonical vs legacy current-production)
+ * - Response selection (SDK-shaped or ratified wire response)
  *
- * **Schema selection**: by default the client targets the **legacy**
- * current-production response shape and applies `LegacyResponseAdapter`
- * to return canonical `TrialBalanceResponse`. Once OT #103 deploys, switch
- * `schemaVersion` to `'canonical'` to skip the adapter step.
+ * The default 'legacy' mode adapts the ratified wire response into the SDK's
+ * `TrialBalanceResponse`. 'canonical' accepts the SDK shape directly. These
+ * retained option names do not imply a planned server migration.
  */
 
 import type {
@@ -35,14 +34,13 @@ export interface FanoClientConfig {
   /** X-API-Key header value (obtain from LodgeiT Labs onboarding). */
   apiKey: string;
   /**
-   * Schema version. Defaults to `'legacy'` (current-production cascade-
-   * authoritative shape; adapter applied automatically to return canonical).
-   * Switch to `'canonical'` once production has migrated to OT #103.
+   * Response shape. Defaults to 'legacy', which adapts wire responses and
+   * also accepts the SDK shape. 'canonical' requires the SDK shape directly.
    */
   schemaVersion?: SchemaVersion;
   /** Optional fetch implementation override (for testing / Node 18+). */
   fetchImpl?: typeof fetch;
-  /** Request timeout in milliseconds (default 30000). */
+  /** Fetch cancellation deadline, including body reads (default 30000 ms). */
   timeoutMs?: number;
 }
 
@@ -117,35 +115,42 @@ export function wrapSingleLineProbe(
 }
 
 /**
- * Type guard for the legacy response shape.
+ * Discriminate a nonempty wire response by its structural markers.
  *
- * Detects whether a response is in the current-production (cascade-
- * authoritative) shape by checking for the `operator_hint_predicted_code`
- * field which is present only in legacy responses.
+ * This checks every row's schema family, not every field's type or value.
+ * Empty results have no family marker; the client handles them separately.
  */
 export function isLegacyResponse(
   raw: unknown,
 ): raw is LegacyTrialBalanceResponse {
-  if (typeof raw !== 'object' || raw === null) return false;
-  const obj = raw as { results?: unknown };
-  if (!Array.isArray(obj.results) || obj.results.length === 0) return false;
-  const first = obj.results[0] as Record<string, unknown>;
-  return (
-    'operator_hint_predicted_code' in first &&
-    'cascade_topology' in first &&
-    !('cascade' in first)
-  );
+  if (!isSuccessEnvelope(raw) || raw.results.length === 0) return false;
+  for (const row of raw.results) {
+    if (!isRecord(row) || typeof row.operator_hint_predicted_code !== 'string'
+        || typeof row.cascade_topology !== 'string' || 'cascade' in row) return false;
+  }
+  return true;
 }
 
-/** Type guard for the canonical (post-OT-#103) response shape. */
+/** Discriminate nonempty SDK-shaped rows without validating all nested fields. */
 export function isCanonicalResponse(
   raw: unknown,
 ): raw is TrialBalanceResponse {
-  if (typeof raw !== 'object' || raw === null) return false;
-  const obj = raw as { results?: unknown };
-  if (!Array.isArray(obj.results) || obj.results.length === 0) return false;
-  const first = obj.results[0] as Record<string, unknown>;
-  return 'cascade' in first && 'warnings' in first;
+  if (!isSuccessEnvelope(raw) || raw.results.length === 0) return false;
+  for (const row of raw.results) {
+    if (!isRecord(row) || !isRecord(row.cascade) || !Array.isArray(row.warnings)) return false;
+  }
+  return true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isSuccessEnvelope(value: unknown): value is {
+  status: 'success'; equilibrium_valid: boolean; results: unknown[];
+} {
+  return isRecord(value) && value.status === 'success'
+    && typeof value.equilibrium_valid === 'boolean' && Array.isArray(value.results);
 }
 
 // ============================================================================
@@ -190,9 +195,8 @@ export class FanoClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    let response: Response;
     try {
-      response = await this.fetchImpl(url, {
+      const response = await this.fetchImpl(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -201,46 +205,46 @@ export class FanoClient {
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
+      if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const errorBody: unknown = await response.json();
+          if (isRecord(errorBody) && errorBody.detail != null) {
+            detail = typeof errorBody.detail === 'string'
+              ? errorBody.detail : JSON.stringify(errorBody.detail) ?? detail;
+          }
+        } catch {
+          // A non-JSON error body falls back to the HTTP status.
+        }
+        if (controller.signal.aborted) throw controller.signal.reason;
+        throw new FanoApiError(response.status, detail);
+      }
+
+      const raw: unknown = await response.json();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (!isSuccessEnvelope(raw)) {
+        throw new Error('FanoClient: response shape unrecognised; expected a success envelope.');
+      }
+      if (raw.results.length !== payload.lines.length) {
+        throw new Error(`FanoClient: result count mismatch; expected ${payload.lines.length}, received ${raw.results.length}.`);
+      }
+      if (raw.results.length === 0) {
+        return { status: raw.status, equilibrium_valid: raw.equilibrium_valid, results: [] };
+      }
+
+      if (this.schemaVersion === 'canonical') {
+        if (!isCanonicalResponse(raw)) {
+          throw new Error('FanoClient: schemaVersion="canonical" requires SDK-shaped response rows.');
+        }
+        return raw;
+      }
+
+      if (isLegacyResponse(raw)) return adaptLegacyResponse(raw);
+      if (isCanonicalResponse(raw)) return raw;
+      throw new Error('FanoClient: response shape unrecognised; neither wire nor SDK-shaped rows.');
     } finally {
       clearTimeout(timeoutId);
     }
-
-    if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      try {
-        const errorBody = (await response.json()) as { detail?: string };
-        if (errorBody.detail) detail = errorBody.detail;
-      } catch {
-        // Body wasn't JSON — fall through with HTTP status only
-      }
-      throw new FanoApiError(response.status, detail);
-    }
-
-    const raw: unknown = await response.json();
-
-    // Schema-version dispatch
-    if (this.schemaVersion === 'canonical') {
-      if (!isCanonicalResponse(raw)) {
-        throw new Error(
-          'FanoClient: schemaVersion="canonical" expected but response is legacy-shape. '
-          + 'Set schemaVersion="legacy" or wait for OT #103 production deployment.',
-        );
-      }
-      return raw;
-    }
-
-    // schemaVersion === 'legacy' — adapt
-    if (isLegacyResponse(raw)) {
-      return adaptLegacyResponse(raw);
-    }
-    if (isCanonicalResponse(raw)) {
-      // Production has already migrated; pass through
-      return raw;
-    }
-    throw new Error(
-      `FanoClient: response shape unrecognised; neither legacy nor canonical. `
-      + `Body keys: ${Object.keys(raw as Record<string, unknown>).join(', ')}`,
-    );
   }
 
   /**

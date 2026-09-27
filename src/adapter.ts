@@ -1,28 +1,13 @@
 /**
- * Legacy response adapter.
+ * Adapter from the ratified wire response to the retained SDK response shape.
  *
- * Transforms current-production response shape (cascade-authoritative;
- * `predicted_code = cascade verdict`) into the canonical post-OT-#103
- * shape (operator-authoritative; `predicted_code = operator's submission`).
+ * Top-level classification fields copy the operator hints. Fano's prediction
+ * is retained under `cascade`; the firewall verdict applies to that prediction.
  *
- * This adapter is **transitional**. Once OT #103 deploys at
- * api/main.py:594-606, current-production responses will arrive in
- * canonical shape natively and this adapter becomes a no-op forward path.
- * Recommended migration sequence for adopters:
- *
- * 1. Today: instantiate `FanoClient` with default `schemaVersion: 'legacy'`
- *    — adapter applied transparently; consumer reads canonical types
- * 2. Post-OT-#103 deploy: switch to `schemaVersion: 'canonical'` to skip
- *    the adapter overhead
- *
- * **Warning derivation**: the adapter reconstructs structured warnings
- * from legacy fields by comparing `predicted_code` (cascade) vs
- * `operator_hint_predicted_code` (operator) and `cascade_topology` vs
- * `operator_hint_source_topology`. Note that legacy responses lack the
- * rich warning payload's `disagreement_reason.l1_signal` / `l2_signal`
- * breakdown and full `suggested_repair_journal` semantics — adapter
- * synthesises sensible defaults but the full surface lands only with
- * native OT #103 deployment.
+ * Warnings are derived by this SDK from reported fields. Signal slots copy one
+ * reported confidence; no independent L1/L2 measurements or Prolog rule IDs
+ * are available. Journal fields contain review placeholders, not posting
+ * instructions. Empty warnings do not establish acceptance or firewall health.
  */
 
 import type {
@@ -36,13 +21,13 @@ import type {
   RepairClass,
 } from './types.js';
 
-/** Threshold below which the cascade is considered to have abstained (per SR #4). */
+/** SDK confidence threshold for deriving a subfloor warning. */
 export const SUBFLOOR_CONFIDENCE = 0.5;
 
 /**
  * Adapt a single legacy line response into the canonical shape.
  *
- * @param legacy The legacy response per-line as returned by production today
+ * @param legacy A row in the ratified wire representation.
  */
 export function adaptLegacyLineResponse(legacy: LegacyLineResponse): LineResponse {
   // iter11.B collapsed L1+L2 into a single classifier; the wire carries one
@@ -62,6 +47,7 @@ export function adaptLegacyLineResponse(legacy: LegacyLineResponse): LineRespons
     cascade: {
       predicted_code: legacy.predicted_code,
       topology: legacy.cascade_topology,
+      model_architecture: legacy.model_architecture,
       // Single-classifier substrate (iter11.B): no separate L1/L2 signals on
       // the wire. Both slots carry the one Platt-scaled confidence for
       // backward-compatible shape; they are not independent measurements.
@@ -136,7 +122,7 @@ function buildSubfloorWarning(
   return {
     kind: 'subfloor_abstention',
     severity: 'warn',
-    message: `Cascade confidence ${cascadeAggregate.toFixed(2)} is below the SR #4 sub-floor of ${SUBFLOOR_CONFIDENCE.toFixed(2)}; operator hint stands but cascade cannot validate.`,
+    message: `Fano confidence ${cascadeAggregate.toFixed(2)} is below the SDK warning threshold of ${SUBFLOOR_CONFIDENCE.toFixed(2)}. Review the reported status and reason.`,
     cascade_alternate_hypothesis: {
       predicted_code: legacy.predicted_code,
       topology: legacy.cascade_topology,
@@ -144,8 +130,8 @@ function buildSubfloorWarning(
       confidence_delta: cascadeAggregate - legacy.operator_hint_confidence,
     },
     disagreement_reason: {
-      summary: 'Cascade aggregate confidence is below the SR #4 sub-floor (0.50). The operator hint stands by default; this row enters the operator-review queue for manual classification.',
-      sbrm_rule_id: 'confidence_floor/1',
+      summary: 'The reported confidence is below the SDK threshold of 0.50. Check source records before choosing a classification.',
+      sbrm_rule_id: '',
       l1_signal: {
         predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
         confidence: legacy.confidence,
@@ -174,8 +160,8 @@ function buildTopologyDisagreementWarning(
       confidence_delta: cascadeAggregate - legacy.operator_hint_confidence,
     },
     disagreement_reason: {
-      summary: `L2 specialist routes this code to ${legacy.cascade_topology}; operator's submission under ${legacy.operator_hint_source_topology} is structurally legal at L3 firewall but contradicts L1 routing.`,
-      sbrm_rule_id: 'evaluate_drift/3',
+      summary: `Fano reports ${legacy.cascade_topology}; the operator hint names ${legacy.operator_hint_source_topology}. This comparison does not verify either classification.`,
+      sbrm_rule_id: '',
       l1_signal: {
         predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
         confidence: legacy.confidence,
@@ -186,11 +172,10 @@ function buildTopologyDisagreementWarning(
       },
     },
     suggested_repair_journal: {
-      narrative: `If operator confirms cascade is right, reclassify by reversing the original placement under ${legacy.operator_hint_source_topology} and re-booking under ${legacy.cascade_topology}.`,
+      narrative: `Review source records and both reported classifications before choosing accounts or posting direction.`,
       proposed_entry: {
-        // Synthesised default: legacy doesn't carry per-line amount;
-        // adapter consumers should override amount from the request payload
-        // when surfacing to operator review.
+        // The response establishes neither posting amounts nor direction.
+        // These zero-valued entries are review placeholders only.
         debit: { account: legacy.operator_hint_predicted_code, amount: 0 },
         credit: { account: legacy.predicted_code, amount: 0 },
       },
@@ -215,8 +200,8 @@ function buildCodeDisagreementWarning(
       confidence_delta: cascadeAggregate - legacy.operator_hint_confidence,
     },
     disagreement_reason: {
-      summary: `L2 specialist picks a different SBRM leaf within the same ${legacy.cascade_topology} domain. Both codes are structurally legal; fine-grained classification difference.`,
-      sbrm_rule_id: 'evaluate_drift/3',
+      summary: `The codes differ within ${legacy.cascade_topology}. A shared topology does not establish that either code is appropriate.`,
+      sbrm_rule_id: '',
       l1_signal: {
         predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
         confidence: legacy.confidence,
@@ -227,7 +212,7 @@ function buildCodeDisagreementWarning(
       },
     },
     suggested_repair_journal: {
-      narrative: `Optional re-code from ${legacy.operator_hint_predicted_code} to ${legacy.predicted_code} within ${legacy.cascade_topology}. No topology change required.`,
+      narrative: `Review source records before changing the code. Zero-valued entries are placeholders, not a proposed posting.`,
       proposed_entry: {
         debit: { account: legacy.operator_hint_predicted_code, amount: 0 },
         credit: { account: legacy.predicted_code, amount: 0 },
@@ -253,8 +238,8 @@ function buildEntityDriftWarning(
       confidence_delta: cascadeAggregate - legacy.operator_hint_confidence,
     },
     disagreement_reason: {
-      summary: 'L3 Prolog firewall rejected the (code, topology, entity_structure) tuple on an entity-conditional rule. The code is restricted to specific entity types.',
-      sbrm_rule_id: 'evaluate_drift/3',
+      summary: 'The returned draft reason contains a drift marker recognised by this SDK. Review that reason and the original classification; the wire supplies no rule identifier.',
+      sbrm_rule_id: '',
       l1_signal: {
         predicted_domain: l1DomainFromTopology(legacy.cascade_topology),
         confidence: legacy.confidence,
@@ -265,7 +250,7 @@ function buildEntityDriftWarning(
       },
     },
     suggested_repair_journal: {
-      narrative: 'Either reassign the entity_structure to one compatible with this code, OR recode to an entity-agnostic alternative within the same topology. Senior accountant review required.',
+      narrative: 'Verify the actual entity and review both classifications against source records. Correct submitted configuration only when it misstates the entity.',
       proposed_entry: {
         debit: { account: legacy.operator_hint_predicted_code, amount: 0 },
         credit: { account: legacy.predicted_code, amount: 0 },
@@ -278,7 +263,7 @@ function buildEntityDriftWarning(
 
 function noActionNeededJournal(legacy: LegacyLineResponse) {
   return {
-    narrative: 'Cascade abstained but operator hint stands. No journal-entry repair required; row enters operator-review queue for manual classification.',
+    narrative: 'Review source records, status and reason before selecting a classification. This response does not establish a journal entry.',
     proposed_entry: {
       debit: { account: legacy.operator_hint_predicted_code, amount: 0 },
       credit: { account: legacy.operator_hint_predicted_code, amount: 0 },

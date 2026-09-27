@@ -20,17 +20,10 @@ response wire-truth before they build their own consumer surface.
 
 ## CORS
 
-**Fano-engine production emits CORS headers as of 2026-06-26 11:39 UTC** (Fano
-CORS Phase 5 sprint shipped Rev 28 with `CORSMiddleware`: `allow_origins=["*"]`,
-`allow_methods=["GET", "POST", "OPTIONS"]`, `allow_headers` includes
-`X-API-Key`, `max_age=3600`). Point the demo Base URL directly at
-`https://fano-engine-afmurhqkaq-ts.a.run.app` and it works — no proxy required.
-
-If you ever need to inspect or capture the wire-truth offline (e.g. CI fixtures,
-air-gapped reproduction, or pre-production canary work where CORS is not yet
-enabled on a particular revision), the `PROXY.md` template still ships in this
-directory as an optional convenience. For normal adopter work against production,
-it is no longer needed.
+The [changelog](../../docs/CHANGELOG.md) records CORS support from 26 June 2026.
+Browser access depends on the deployment allowing the page's origin and the
+`X-API-Key` header. If a deployment blocks your origin, check its CORS settings
+or use your approved application proxy. Keep browser security enabled.
 
 ## Running it (local)
 
@@ -41,22 +34,20 @@ python3 -m http.server 8000 --directory examples/demo-gui
 npx http-server examples/demo-gui -p 8000
 
 # Open http://localhost:8000 in your browser
-# Configure the API key + (optionally) a local CORS proxy URL + click Fire
+# Configure the API key and endpoint URL, then click Fire
 ```
 
-Or open `index.html` directly via `file://…` — but most browsers' fetch
-will fail the API-key header on `file://` origins, so the local server
-path is preferred.
+Use the HTTP server so the browser can load the JavaScript module consistently.
 
-## What you'll see at production (today's wire-truth)
+## Recorded fixture results
 
-The three preset buttons load fixtures that match exactly what production
-returned at `2026-06-25T10:59:03Z` mini-Gauntlet:
+The preset inputs accompany responses recorded on 25 June 2026 at 10:59:03 UTC.
+These are historical examples, not predictions for a later deployment:
 
 | Preset | Sample result |
 |---|---|
 | KC1 · Bank Accounts × company | `sbrm_1137 / conf 0.50+ / current_assets / accepted_fact` |
-| KC2 · Drawings × company | `sbrm_3140 / 0.696 / equity / draft_fact` (firewall quarantine — L#64 PROMOTED) |
+| KC2 · Drawings × company | `sbrm_3140 / 0.696 / equity / draft_fact` (firewall rejection) |
 | KC2 · Drawings × trust | `sbrm_2240 / 0.797 / current_liabilities / accepted_fact` |
 | KC2 · Drawings × sole_trader | `sbrm_3140 / 0.641 / equity / accepted_fact` |
 | KC6 · Loans to Beneficiaries × company | `sbrm_1285 / 0.326 / current_assets / draft_fact` (sub-floor; SR #4 0.50 floor) |

@@ -13,7 +13,7 @@ import {
   isLegacyResponse,
   isCanonicalResponse,
 } from '../src/client.js';
-import type { LineItem, LegacyTrialBalanceResponse, TrialBalanceResponse } from '../src/types.js';
+import type { LineItem, LegacyTrialBalanceResponse } from '../src/types.js';
 
 describe('buildEquilibriumSentinel', () => {
   it('produces contra-side sentinel for asset-side primary', () => {
@@ -87,6 +87,7 @@ describe('isLegacyResponse / isCanonicalResponse type guards', () => {
           description: 'X',
           predicted_code: 'sbrm_4100',
           cascade_topology: 'revenue',
+          model_architecture: 'synthetic-test-model',
           operator_hint_predicted_code: 'sbrm_4100',
         },
       ],
@@ -151,6 +152,7 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
           predicted_code: 'sbrm_4100',
           confidence: 0.9,
           cascade_topology: 'revenue',
+          model_architecture: 'synthetic-test-model',
           operator_hint_predicted_code: 'sbrm_4401', // different
           operator_hint_source_topology: 'current_liabilities', // different
           operator_hint_confidence: 0.7,
@@ -171,7 +173,8 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
     });
     const result = await client.ingestTrialBalance({
       entity_structure: 'company',
-      lines: [],
+      lines: [{ description: 'Trading Revenue', predicted_code: 'sbrm_4401',
+        source_topology: 'current_liabilities', confidence: 0.7, amount: 0 }],
     });
     // Adapter applied: top-level = operator's submission
     expect(result.results[0]!.predicted_code).toBe('sbrm_4401');
@@ -226,6 +229,7 @@ describe('FanoClient.probeSingleLine', () => {
           predicted_code: 'sbrm_4100',
           confidence: 0.9,
           cascade_topology: 'revenue',
+          model_architecture: 'synthetic-test-model',
           operator_hint_predicted_code: 'sbrm_4100',
           operator_hint_source_topology: 'revenue',
           operator_hint_confidence: 0.95,
@@ -237,6 +241,7 @@ describe('FanoClient.probeSingleLine', () => {
           predicted_code: 'sbrm_2266',
           confidence: 0.99,
           cascade_topology: 'current_liabilities',
+          model_architecture: 'synthetic-test-model',
           operator_hint_predicted_code: 'sbrm_2266',
           operator_hint_source_topology: 'current_liabilities',
           operator_hint_confidence: 0.99,

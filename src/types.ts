@@ -1,27 +1,17 @@
 /**
- * Canonical type definitions for the Fano Classifier API.
+ * Wire and SDK response types for the Fano Classifier client.
  *
- * These types describe the **post-OT-#103 canonical schema** per the
- * Layer 1a/1b operator-authoritative reframe banked at PR ζ.0 (mc08).
- *
- * Cross-references (private LodgeiT Labs Brain canon):
- * - PR #446 mc01 — Sprint design + two-layer responsibility model
- * - PR #453 mc08 — Topology-disagreement reframe + rich warning-payload schema
- * - docs/architecture.md §4 + §5 in this kit
- *
- * **IMPORTANT**: production deployment of OT #103 (the schema change at
- * api/main.py:594-606) has not yet shipped. Current production responses
- * are cascade-authoritative (response.predicted_code = cascade's verdict,
- * not operator's submission). Use `LegacyResponseAdapter` from
- * `@lodgeit-labs/fano-classifier-client/adapter` to transform current
- * production responses into the canonical shape until OT #103 ships.
+ * LegacyLineResponse describes the ratified wire representation documented in
+ * docs/response-schema.md. The adapter returns the SDK's retained canonical
+ * shape: operator hints at the top level, Fano's prediction under `cascade`,
+ * and SDK-derived warnings. This is not a promised future server schema.
  */
 
 // ============================================================================
 // Enums
 // ============================================================================
 
-/** 5-class L1 domain (cascade router output). */
+/** Compatibility domain derived by the SDK from the reported topology. */
 export type L1Domain = 'assets' | 'liabilities' | 'equity' | 'revenue' | 'expenses';
 
 /** 7-class canonical topology (operator-submitted or cascade-derived). */
@@ -45,7 +35,7 @@ export type EntityStructure =
 /** Fano firewall verdict per line item. */
 export type FanoStatus = 'accepted_fact' | 'draft_fact' | 'quarantine';
 
-/** Canonical warning kinds (5 per docs/architecture.md §3). */
+/** SDK warning kinds; code_consolidation is retained but not derived here. */
 export type WarningKind =
   | 'topology_disagreement'
   | 'code_disagreement'
@@ -53,7 +43,7 @@ export type WarningKind =
   | 'entity_conditional_drift'
   | 'subfloor_abstention';
 
-/** Severity classification per warning. */
+/** SDK severity recommendation per warning. */
 export type WarningSeverity = 'info' | 'warn' | 'halt';
 
 /** Suggested-fix classification. */
@@ -91,14 +81,14 @@ export interface TrialBalancePayload {
 }
 
 // ============================================================================
-// Warning payload schema (per docs/architecture.md §4)
+// SDK-derived warning payloads; these are not wire-reported warnings.
 // ============================================================================
 
 /** Cascade's alternate hypothesis for a line in disagreement. */
 export interface CascadeAlternateHypothesis {
   predicted_code: SbrmCode;
   topology: Topology;
-  /** Aggregate confidence = min(L1 confidence, L2 confidence). */
+  /** The single confidence reported by Fano when produced by this adapter. */
   aggregate_confidence: number;
   /** Signed delta: cascade aggregate confidence minus operator confidence. */
   confidence_delta: number;
@@ -108,30 +98,30 @@ export interface CascadeAlternateHypothesis {
 export interface DisagreementReason {
   /** Human-readable structured-prose summary. */
   summary: string;
-  /** Prolog predicate name driving the disagreement (e.g. `evaluate_drift/3`). */
+  /** Reported rule identifier; empty when unavailable, as on the ratified wire. */
   sbrm_rule_id: string;
-  /** L1 router signal. */
+  /** Compatibility projection: topology-derived domain and reported confidence. */
   l1_signal: {
     predicted_domain: L1Domain;
     confidence: number;
   };
-  /** L2 specialist signal. */
+  /** Compatibility projection of the same Fano prediction and confidence. */
   l2_signal: {
     predicted_code: SbrmCode;
     confidence: number;
   };
 }
 
-/** Proposed double-entry to repair a disagreement. */
+/** Review placeholders, not an executable or validated repair journal. */
 export interface SuggestedRepairJournal {
   /** Human-readable explanation. */
   narrative: string;
-  /** The proposed double-entry; debit.amount must equal credit.amount. */
+  /** Zero-valued placeholders; the response does not establish posting direction. */
   proposed_entry: {
     debit: { account: string; amount: number };
     credit: { account: string; amount: number };
   };
-  /** Whether operator intervention is required before write. */
+  /** SDK review recommendation, not a server workflow decision. */
   operator_action_required: boolean;
   /** Class of repair action. */
   repair_class: RepairClass;
@@ -149,31 +139,32 @@ export interface Warning {
 }
 
 // ============================================================================
-// Response schema (canonical post-OT-#103 shape)
+// SDK response schema, retained under the public name 'canonical'.
 // ============================================================================
 
-/** Cascade's independent reading (always populated; advisory). */
+/** Fano's prediction, to which the returned firewall verdict applies. */
 export interface CascadeReading {
   predicted_code: SbrmCode;
   topology: Topology;
+  /** Model identifier copied from the wire; older SDK-shaped responses may omit it. */
+  model_architecture?: string;
+  /** Compatibility copy of Fano's single reported confidence. */
   l1_confidence: number;
+  /** Compatibility copy of the same confidence, not an independent measurement. */
   l2_confidence: number;
-  /** Aggregate confidence = min(l1_confidence, l2_confidence). */
+  /** Fano's single reported confidence when produced by this adapter. */
   aggregate_confidence: number;
 }
 
 /**
- * Per-line response (canonical post-OT-#103 shape).
+ * Per-line SDK response.
  *
- * **Layer 1a invariant**: `predicted_code`, `source_topology`, `confidence`
- * always reflect the operator's submission byte-for-byte.
+ * The adapter copies reported operator hints into `predicted_code`,
+ * `source_topology` and `confidence`. It preserves Fano's prediction under
+ * `cascade`, regardless of agreement with those hints.
  *
- * **Layer 1b invariant**: `cascade.*` is always populated with the cascade's
- * independent reading, regardless of agreement.
- *
- * **Warnings invariant**: `warnings` is empty if and only if the cascade
- * agrees with the operator on both code and topology AND the L3 firewall
- * accepted AND confidence is above the SR #4 sub-floor.
+ * Empty warnings mean no adapter warning predicate matched. Always inspect
+ * fano_status and quarantine_reason separately: a timeout can have no warnings.
  */
 export interface LineResponse {
   /** Echo of the operator-submitted description. */
@@ -186,15 +177,15 @@ export interface LineResponse {
   confidence: number;
   /** Cascade's independent reading (Layer 1b advisory). */
   cascade: CascadeReading;
-  /** Fano firewall verdict. */
+  /** Verdict on cascade.predicted_code, not on the top-level operator hint. */
   fano_status: FanoStatus;
-  /** Quarantine reason (non-null when fano_status != 'accepted_fact'). */
+  /** Reported reason, preserved without inferring a missing value. */
   quarantine_reason: string | null;
-  /** Structured warnings; empty when cascade fully agrees with operator. */
+  /** SDK-derived advisories; their absence does not establish acceptance. */
   warnings: Warning[];
 }
 
-/** Top-level response from POST /ingest/trial_balance. */
+/** SDK response after adaptation, or from an endpoint serving this SDK shape. */
 export interface TrialBalanceResponse {
   status: 'success';
   equilibrium_valid: boolean;
@@ -202,7 +193,7 @@ export interface TrialBalanceResponse {
 }
 
 // ============================================================================
-// Legacy response schema (current production at api/main.py:594-606)
+// Ratified wire response schema; 'Legacy' is the retained public type name.
 // ============================================================================
 
 /**
@@ -215,7 +206,7 @@ export interface TrialBalanceResponse {
  * The iter11.B collapse removed the L1/L2 split, so there is no `l1_domain`,
  * `cascade_l1_confidence`, or `cascade_l2_confidence` on the wire; the single
  * classifier's model revision is reported as `model_architecture`.
- * This interface matches `docs/response-schema.md` exactly (10 fields).
+ * This interface describes the 11 fields listed in `docs/response-schema.md`.
  */
 export interface LegacyLineResponse {
   /** Echo of the operator-submitted description. */

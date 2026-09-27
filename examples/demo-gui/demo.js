@@ -186,43 +186,53 @@ async function fire() {
   setStatus("pending", `POST ${baseUrl}/ingest/trial_balance …`);
   els.fire.disabled = true;
 
-  const t0 = performance.now();
-  let resp, bodyText;
   try {
-    resp = await fetch(`${baseUrl}/ingest/trial_balance`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
-      body: JSON.stringify(payload),
-    });
-    bodyText = await resp.text();
-  } catch (err) {
+    const t0 = performance.now();
+    let resp, bodyText;
+    try {
+      resp = await fetch(`${baseUrl}/ingest/trial_balance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+        },
+        body: JSON.stringify(payload),
+      });
+      bodyText = await resp.text();
+    } catch (err) {
+      const elapsedMs = Math.round(performance.now() - t0);
+      setStatus("fail", `Network error after ${elapsedMs}ms: ${err.message}\nFor blocked browser requests, see Browser connection at the top of the page.`);
+      return;
+    }
     const elapsedMs = Math.round(performance.now() - t0);
-    setStatus("fail", `network error after ${elapsedMs}ms: ${err.message}\n(if this looks CORS-shaped, see the warning at the top of the page)`);
+
+    els.rawResponse.textContent = bodyText;
+    let parsed;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch (_) {
+      parsed = null;
+    }
+
+    if (resp.status !== 200) {
+      setStatus("fail", `HTTP ${resp.status} in ${elapsedMs}ms: ${parsed?.detail || bodyText.slice(0, 200)}`);
+      return;
+    }
+
+    if (parsed?.status !== "success" || typeof parsed.equilibrium_valid !== "boolean"
+        || !Array.isArray(parsed.results) || parsed.results.length !== lines.length
+        || parsed.results.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+      setStatus("fail", "The response has an invalid result envelope or row count. Inspect the raw response.");
+      return;
+    }
+    renderResults(parsed.results);
+    setStatus("ok", `HTTP 200 in ${elapsedMs}ms · equilibrium_valid=${parsed.equilibrium_valid} · ${parsed.results.length} result rows`);
+  } catch {
+    els.results.innerHTML = "";
+    setStatus("fail", "The response could not be displayed. Inspect the raw response and retry.");
+  } finally {
     els.fire.disabled = false;
-    return;
   }
-  const elapsedMs = Math.round(performance.now() - t0);
-
-  els.rawResponse.textContent = bodyText;
-  let parsed;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch (_) {
-    parsed = null;
-  }
-
-  if (resp.status !== 200) {
-    setStatus("fail", `HTTP ${resp.status} in ${elapsedMs}ms — ${parsed?.detail || bodyText.slice(0, 200)}`);
-    els.fire.disabled = false;
-    return;
-  }
-
-  setStatus("ok", `HTTP 200 in ${elapsedMs}ms · equilibrium_valid=${parsed?.equilibrium_valid} · ${parsed?.results?.length ?? 0} result rows`);
-  renderResults(parsed?.results ?? []);
-  els.fire.disabled = false;
 }
 
 function setStatus(kind, msg) {
@@ -239,7 +249,8 @@ function renderResults(results) {
   els.results.innerHTML = "";
   results.forEach((r) => {
     const card = document.createElement("div");
-    const status = r.fano_status || "unknown";
+    const status = ["accepted_fact", "draft_fact", "quarantine"].includes(r.fano_status)
+      ? r.fano_status : "unknown";
     card.classList.add("result-card", status);
 
     const badge = `<span class="status-badge ${status}">${status}</span>`;
@@ -249,7 +260,7 @@ function renderResults(results) {
       <div class="desc">${escapeHtml(r.description ?? "(no description)")}  ${badge}</div>
       <div class="grid">
         <span class="label">predicted_code</span> <span>${escapeHtml(r.predicted_code ?? "")}</span>
-        <span class="label">confidence</span> <span>${confDisplay}</span>
+        <span class="label">confidence</span> <span>${escapeHtml(confDisplay)}</span>
         <span class="label">cascade_topology</span> <span>${escapeHtml(r.cascade_topology ?? "")}</span>
         ${r.quarantine_reason ? `<span class="label">quarantine_reason</span> <span>${escapeHtml(r.quarantine_reason)}</span>` : ""}
         ${r.operator_hint_predicted_code ? `<span class="label">operator_hint</span> <span>${escapeHtml(r.operator_hint_predicted_code)} (${escapeHtml(r.operator_hint_source_topology ?? "")})</span>` : ""}

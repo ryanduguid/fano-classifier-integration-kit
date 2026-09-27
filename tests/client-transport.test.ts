@@ -37,7 +37,9 @@ it('rejects redirects before sending the key or payload to another origin', asyn
           sentRedirect = init?.redirect;
           return fetch(input, init);
         } });
-      await expect(client.ingestTrialBalance({ entity_structure: 'company', lines: [] })).rejects.toThrow();
+      await expect(client.ingestTrialBalance({ entity_structure: 'company', lines: [] })).rejects.toMatchObject({
+        name: 'TypeError', cause: { message: 'unexpected redirect' },
+      });
       expect(sentRedirect).toBe('error');
       expect(sourceRequests).toBe(1);
       expect(redirectedRequests).toBe(0);

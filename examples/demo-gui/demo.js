@@ -1,8 +1,8 @@
 // Fano Classifier — demo GUI JS module
 // Plain ES module; no build step; no framework. Tested in modern Chromium + Firefox.
 // Author: ClawDog (mc13-2026-06-25).
-// SR #2 hygiene: API key is read from a localStorage-only field; never logged; never
-// transmitted anywhere except to the user-configured Base URL.
+// The key stays in the input, with best-effort localStorage persistence.
+// Requests use the configured endpoint and reject redirects; the key is not logged.
 
 /** Preset payloads — mirror examples/canonical-fixtures/. */
 const PRESETS = {
@@ -75,14 +75,21 @@ const LS_KEYS = {
   baseUrl: "fano-demo:base-url",
   apiKey: "fano-demo:api-key",
 };
-if (localStorage.getItem(LS_KEYS.baseUrl)) {
-  els.baseUrl.value = localStorage.getItem(LS_KEYS.baseUrl);
+for (const name of ["baseUrl", "apiKey"]) {
+  try {
+    const saved = localStorage.getItem(LS_KEYS[name]);
+    if (saved) els[name].value = saved;
+  } catch {
+    // Storage can be denied by browser policy; manual input still works.
+  }
+  els[name].addEventListener("change", () => {
+    try {
+      localStorage.setItem(LS_KEYS[name], els[name].value);
+    } catch {
+      // Keep the current input usable when persistence is unavailable.
+    }
+  });
 }
-if (localStorage.getItem(LS_KEYS.apiKey)) {
-  els.apiKey.value = localStorage.getItem(LS_KEYS.apiKey);
-}
-els.baseUrl.addEventListener("change", () => localStorage.setItem(LS_KEYS.baseUrl, els.baseUrl.value));
-els.apiKey.addEventListener("change", () => localStorage.setItem(LS_KEYS.apiKey, els.apiKey.value));
 
 // Initial preset load.
 loadPreset("drawings");
@@ -185,6 +192,8 @@ async function fire() {
   els.rawResponse.textContent = "";
   setStatus("pending", `POST ${baseUrl}/ingest/trial_balance …`);
   els.fire.disabled = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const t0 = performance.now();
@@ -197,11 +206,15 @@ async function fire() {
           "X-API-Key": apiKey,
         },
         body: JSON.stringify(payload),
+        signal: controller.signal,
+        redirect: "error",
       });
       bodyText = await resp.text();
     } catch (err) {
       const elapsedMs = Math.round(performance.now() - t0);
-      setStatus("fail", `Network error after ${elapsedMs}ms: ${err.message}\nFor blocked browser requests, see Browser connection at the top of the page.`);
+      setStatus("fail", controller.signal.aborted
+        ? `Request timed out after ${elapsedMs}ms. Check the endpoint and retry.`
+        : `Network error after ${elapsedMs}ms: ${err.message}\nFor blocked browser requests, see Browser connection at the top of the page.`);
       return;
     }
     const elapsedMs = Math.round(performance.now() - t0);
@@ -221,8 +234,8 @@ async function fire() {
 
     if (parsed?.status !== "success" || typeof parsed.equilibrium_valid !== "boolean"
         || !Array.isArray(parsed.results) || parsed.results.length !== lines.length
-        || parsed.results.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
-      setStatus("fail", "The response has an invalid result envelope or row count. Inspect the raw response.");
+        || parsed.results.some((row) => !isWireRow(row))) {
+      setStatus("fail", "The response has an invalid envelope, row family or result count. Inspect the raw response.");
       return;
     }
     renderResults(parsed.results);
@@ -231,8 +244,15 @@ async function fire() {
     els.results.innerHTML = "";
     setStatus("fail", "The response could not be displayed. Inspect the raw response and retry.");
   } finally {
+    clearTimeout(timeoutId);
     els.fire.disabled = false;
   }
+}
+
+function isWireRow(row) {
+  return row !== null && typeof row === "object" && !Array.isArray(row)
+    && typeof row.operator_hint_predicted_code === "string"
+    && typeof row.cascade_topology === "string" && !("cascade" in row);
 }
 
 function setStatus(kind, msg) {

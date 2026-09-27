@@ -91,6 +91,8 @@ The wire response follows the pinned contract in [`docs/response-schema.md`](doc
 
 The public option name `schemaVersion: 'legacy'` selects wire adaptation and also accepts an SDK-shaped response. `'canonical'` requires the SDK shape directly. These names do not promise a server migration. The exported response guards distinguish structural families; they do not validate every nested field or establish accounting correctness.
 
+Configure the final endpoint URL: the SDK and browser demo reject HTTP redirects. The SDK's cancellation deadline includes response-body reads and defaults to 30 seconds. The demo also cancels stalled requests after a 30-second timer.
+
 Warnings can be empty for a firewall timeout. Always inspect the verdict and reason separately. Compatibility L1/L2 fields copy one reported confidence; the wire does not supply independent signals or a rule identifier. Suggested journal fields contain zero-valued review placeholders and do not establish posting amounts or direction.
 
 ## Consumer workflow

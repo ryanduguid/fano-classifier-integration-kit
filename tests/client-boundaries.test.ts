@@ -66,6 +66,27 @@ describe('response envelopes and counts', () => {
       .rejects.toThrow('result count mismatch; expected 0, received 1');
     await expect(clientFor(envelope([]), schema).ingestTrialBalance({ ...emptyRequest, lines: [line] }))
       .rejects.toThrow('result count mismatch; expected 1, received 0');
+    for (const count of [1, 3]) {
+      await expect(clientFor(envelope(Array(count).fill(row)), schema)
+        .ingestTrialBalance({ ...emptyRequest, lines: [line, line] }))
+        .rejects.toThrow(`result count mismatch; expected 2, received ${count}`);
+    }
+  });
+
+  it.each([true, false])('uses the submitted count after caller mutation: valid=%s', async valid => {
+    let release!: (response: Response) => void;
+    let submitted = '';
+    const client = new FanoClient({ apiKey: 'fabricated-test-value', fetchImpl: async (_input, init) => {
+      submitted = String(init?.body);
+      return new Promise<Response>(resolve => { release = resolve; });
+    } });
+    const request = { ...emptyRequest, lines: [line] };
+    const pending = client.ingestTrialBalance(request);
+    expect(JSON.parse(submitted).lines).toHaveLength(1);
+    request.lines = [];
+    release(new Response(JSON.stringify(envelope(valid ? [wireRow] : []))));
+    if (valid) await expect(pending).resolves.toMatchObject({ results: [adaptLegacyLineResponse(wireRow)] });
+    else await expect(pending).rejects.toThrow('result count mismatch; expected 1, received 0');
   });
 
   it.each([null, false, 3, [], {}, { results: [] }])('reports malformed envelopes: %j', async raw => {
@@ -143,7 +164,7 @@ describe('request deadlines', () => {
     }
   });
 
-  it.each(['success', 'network', 'json', 'schema', 'http'])(
+  it.each(['empty', 'wire', 'sdk', 'network', 'json', 'schema', 'http'])(
     'clears the deadline after %s', async mode => {
       vi.useFakeTimers();
       let signal: AbortSignal | undefined;
@@ -153,12 +174,21 @@ describe('request deadlines', () => {
         return { ok: mode !== 'http', status: mode === 'http' ? 400 : 200,
           json: async () => {
             if (mode === 'json') throw new SyntaxError('Fabricated JSON failure');
-            return mode === 'schema' ? null : mode === 'http' ? { detail: 'Fabricated error' } : envelope([]);
+            return mode === 'schema' ? null : mode === 'http' ? { detail: 'Fabricated error' }
+              : envelope(mode === 'wire' ? [wireRow] : mode === 'sdk' ? [sdkRow] : []);
           } } as Response;
       };
       try {
-        await new FanoClient({ apiKey: 'fabricated-test-value', fetchImpl, timeoutMs: 25 })
-          .ingestTrialBalance(emptyRequest).catch(() => undefined);
+        const pending = new FanoClient({ apiKey: 'fabricated-test-value', fetchImpl, timeoutMs: 25 })
+          .ingestTrialBalance({ ...emptyRequest, lines: ['wire', 'sdk'].includes(mode) ? [line] : [] });
+        if (['empty', 'wire', 'sdk'].includes(mode)) {
+          await expect(pending).resolves.toEqual(envelope(mode === 'wire' ? [adaptLegacyLineResponse(wireRow)]
+            : mode === 'sdk' ? [sdkRow] : []));
+        } else {
+          await expect(pending).rejects.toThrow(mode === 'network' ? 'Fabricated network failure'
+            : mode === 'json' ? 'Fabricated JSON failure'
+              : mode === 'schema' ? 'response shape unrecognised' : 'Fabricated error');
+        }
         expect(vi.getTimerCount()).toBe(0);
         vi.advanceTimersByTime(100);
         expect(signal?.aborted).toBe(false);
@@ -193,6 +223,12 @@ describe('adapter provenance and advice', () => {
       { fano_status: 'draft_fact' as const, quarantine_reason: 'Entity/Topological Drift: fabricated case' },
     ]) {
       const result = adaptLegacyLineResponse({ ...wireRow, ...changes });
+      expect(result.predicted_code).toBe(changes.operator_hint_predicted_code ?? wireRow.operator_hint_predicted_code);
+      expect(result.source_topology).toBe(changes.operator_hint_source_topology ?? wireRow.operator_hint_source_topology);
+      expect(result.confidence).toBe(wireRow.operator_hint_confidence);
+      expect(result.cascade).toEqual({ predicted_code: wireRow.predicted_code, topology: wireRow.cascade_topology,
+        model_architecture: wireRow.model_architecture, l1_confidence: wireRow.confidence,
+        l2_confidence: wireRow.confidence, aggregate_confidence: wireRow.confidence });
       expect(result.warnings.length).toBeGreaterThan(0);
       for (const warning of result.warnings) {
         expect(warning.disagreement_reason.sbrm_rule_id).toBe('');

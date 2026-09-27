@@ -16,7 +16,7 @@ response wire-truth before they build their own consumer surface.
 - Renders each result line as a card colour-coded by `fano_status`
   (green `accepted_fact` / orange `draft_fact` / red `quarantine`)
 - Shows raw request + raw response JSON in collapsible `<details>` panels
-- API key + base URL persisted in `localStorage` (BYO key; nothing logged)
+- API key and base URL saved in browser storage when available; manual input still works if storage is blocked
 
 ## CORS
 
@@ -24,6 +24,10 @@ The [changelog](../../docs/CHANGELOG.md) records CORS support from 26 June 2026.
 Browser access depends on the deployment allowing the page's origin and the
 `X-API-Key` header. If a deployment blocks your origin, check its CORS settings
 or use your approved application proxy. Keep browser security enabled.
+
+Enter the final endpoint URL. The demo rejects redirects so the key and payload
+cannot be forwarded to a redirected destination. A 30-second timer cancels
+stalled requests, including response-body reads, and allows a retry.
 
 ## Running it (local)
 

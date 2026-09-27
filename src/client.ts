@@ -196,14 +196,17 @@ export class FanoClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
+      const expectedResultCount = payload.lines.length;
+      const requestBody = JSON.stringify(payload);
       const response = await this.fetchImpl(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': this.apiKey,
         },
-        body: JSON.stringify(payload),
+        body: requestBody,
         signal: controller.signal,
+        redirect: 'error',
       });
       if (!response.ok) {
         let detail = `HTTP ${response.status}`;
@@ -225,8 +228,8 @@ export class FanoClient {
       if (!isSuccessEnvelope(raw)) {
         throw new Error('FanoClient: response shape unrecognised; expected a success envelope.');
       }
-      if (raw.results.length !== payload.lines.length) {
-        throw new Error(`FanoClient: result count mismatch; expected ${payload.lines.length}, received ${raw.results.length}.`);
+      if (raw.results.length !== expectedResultCount) {
+        throw new Error(`FanoClient: result count mismatch; expected ${expectedResultCount}, received ${raw.results.length}.`);
       }
       if (raw.results.length === 0) {
         return { status: raw.status, equilibrium_valid: raw.equilibrium_valid, results: [] };

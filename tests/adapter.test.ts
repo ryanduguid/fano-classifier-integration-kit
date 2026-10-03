@@ -10,7 +10,8 @@
  * which lives in private canon).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import {
   adaptLegacyLineResponse,
   adaptLegacyResponse,
@@ -38,12 +39,12 @@ describe('adaptLegacyLineResponse — Layer 1a wire-truth pass-through', () => {
       quarantine_reason: null,
     };
     const canonical = adaptLegacyLineResponse(legacy);
-    expect(canonical.predicted_code).toBe('sbrm_4401'); // operator's
-    expect(canonical.source_topology).toBe('current_liabilities'); // operator's
-    expect(canonical.confidence).toBe(0.7); // operator's
+    assert.strictEqual(canonical.predicted_code, 'sbrm_4401'); // operator's
+    assert.strictEqual(canonical.source_topology, 'current_liabilities'); // operator's
+    assert.strictEqual(canonical.confidence, 0.7); // operator's
     // Cascade ships in cascade.*:
-    expect(canonical.cascade.predicted_code).toBe('sbrm_4100');
-    expect(canonical.cascade.topology).toBe('revenue');
+    assert.strictEqual(canonical.cascade.predicted_code, 'sbrm_4100');
+    assert.strictEqual(canonical.cascade.topology, 'revenue');
   });
 
   it('cascade.aggregate_confidence = the single Platt-scaled confidence (iter11.B; no l1/l2 split)', () => {
@@ -60,7 +61,7 @@ describe('adaptLegacyLineResponse — Layer 1a wire-truth pass-through', () => {
       quarantine_reason: null,
     };
     const canonical = adaptLegacyLineResponse(legacy);
-    expect(canonical.cascade.aggregate_confidence).toBe(0.85);
+    assert.strictEqual(canonical.cascade.aggregate_confidence, 0.85);
   });
 });
 
@@ -81,12 +82,12 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
     };
     const canonical = adaptLegacyLineResponse(legacy);
     const topoWarn = canonical.warnings.find((w) => w.kind === 'topology_disagreement');
-    expect(topoWarn).toBeDefined();
-    expect(topoWarn!.severity).toBe('warn');
-    expect(topoWarn!.cascade_alternate_hypothesis.predicted_code).toBe('sbrm_4100');
-    expect(topoWarn!.cascade_alternate_hypothesis.topology).toBe('revenue');
-    expect(topoWarn!.suggested_repair_journal.repair_class).toBe('reclassify_topology');
-    expect(topoWarn!.suggested_repair_journal.operator_action_required).toBe(true);
+    assert.notStrictEqual(topoWarn, undefined);
+    assert.strictEqual(topoWarn!.severity, 'warn');
+    assert.strictEqual(topoWarn!.cascade_alternate_hypothesis.predicted_code, 'sbrm_4100');
+    assert.strictEqual(topoWarn!.cascade_alternate_hypothesis.topology, 'revenue');
+    assert.strictEqual(topoWarn!.suggested_repair_journal.repair_class, 'reclassify_topology');
+    assert.strictEqual(topoWarn!.suggested_repair_journal.operator_action_required, true);
   });
 
   it('emits code_disagreement warning (info) when code differs but topology matches', () => {
@@ -104,9 +105,9 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
     };
     const canonical = adaptLegacyLineResponse(legacy);
     const codeWarn = canonical.warnings.find((w) => w.kind === 'code_disagreement');
-    expect(codeWarn).toBeDefined();
-    expect(codeWarn!.severity).toBe('info');
-    expect(codeWarn!.suggested_repair_journal.operator_action_required).toBe(false);
+    assert.notStrictEqual(codeWarn, undefined);
+    assert.strictEqual(codeWarn!.severity, 'info');
+    assert.strictEqual(codeWarn!.suggested_repair_journal.operator_action_required, false);
   });
 
   it('emits subfloor_abstention warning when cascade aggregate < 0.50', () => {
@@ -124,9 +125,9 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
     };
     const canonical = adaptLegacyLineResponse(legacy);
     const subfloorWarn = canonical.warnings.find((w) => w.kind === 'subfloor_abstention');
-    expect(subfloorWarn).toBeDefined();
-    expect(subfloorWarn!.severity).toBe('warn');
-    expect(canonical.cascade.aggregate_confidence).toBeLessThan(SUBFLOOR_CONFIDENCE);
+    assert.notStrictEqual(subfloorWarn, undefined);
+    assert.strictEqual(subfloorWarn!.severity, 'warn');
+    assert.ok(canonical.cascade.aggregate_confidence < SUBFLOOR_CONFIDENCE);
   });
 
   it('emits entity_conditional_drift warning (halt) when L3 firewall rejected', () => {
@@ -144,9 +145,9 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
     };
     const canonical = adaptLegacyLineResponse(legacy);
     const driftWarn = canonical.warnings.find((w) => w.kind === 'entity_conditional_drift');
-    expect(driftWarn).toBeDefined();
-    expect(driftWarn!.severity).toBe('halt');
-    expect(driftWarn!.suggested_repair_journal.repair_class).toBe('verify_coa_config');
+    assert.notStrictEqual(driftWarn, undefined);
+    assert.strictEqual(driftWarn!.severity, 'halt');
+    assert.strictEqual(driftWarn!.suggested_repair_journal.repair_class, 'verify_coa_config');
   });
 
   it('emits zero warnings when cascade fully agrees with operator above sub-floor', () => {
@@ -163,7 +164,7 @@ describe('adaptLegacyLineResponse — warning derivation', () => {
       quarantine_reason: null,
     };
     const canonical = adaptLegacyLineResponse(legacy);
-    expect(canonical.warnings).toHaveLength(0);
+    assert.strictEqual(canonical.warnings.length, 0);
   });
 });
 
@@ -200,10 +201,10 @@ describe('adaptLegacyResponse — full response transformation', () => {
       ],
     };
     const canonical = adaptLegacyResponse(legacy);
-    expect(canonical.status).toBe('success');
-    expect(canonical.equilibrium_valid).toBe(true);
-    expect(canonical.results).toHaveLength(2);
-    expect(canonical.results[0]!.predicted_code).toBe('sbrm_4100');
-    expect(canonical.results[0]!.warnings).toHaveLength(0);
+    assert.strictEqual(canonical.status, 'success');
+    assert.strictEqual(canonical.equilibrium_valid, true);
+    assert.strictEqual(canonical.results.length, 2);
+    assert.strictEqual(canonical.results[0]!.predicted_code, 'sbrm_4100');
+    assert.strictEqual(canonical.results[0]!.warnings.length, 0);
   });
 });

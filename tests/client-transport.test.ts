@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import type { RequestListener, Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { expect, it } from 'vitest';
+import { it } from 'node:test';
+import assert from 'node:assert/strict';
 import { FanoClient } from '../src/client.js';
 
 async function listen(handler: RequestListener): Promise<{ server: Server; url: string }> {
@@ -37,12 +38,14 @@ it('rejects redirects before sending the key or payload to another origin', asyn
           sentRedirect = init?.redirect;
           return fetch(input, init);
         } });
-      await expect(client.ingestTrialBalance({ entity_structure: 'company', lines: [] })).rejects.toMatchObject({
-        name: 'TypeError', cause: { message: 'unexpected redirect' },
+      await assert.rejects(client.ingestTrialBalance({ entity_structure: 'company', lines: [] }), (error: Error) => {
+        assert.strictEqual(error.name, 'TypeError');
+        assert.strictEqual((error.cause as Error).message, 'unexpected redirect');
+        return true;
       });
-      expect(sentRedirect).toBe('error');
-      expect(sourceRequests).toBe(1);
-      expect(redirectedRequests).toBe(0);
+      assert.strictEqual(sentRedirect, 'error');
+      assert.strictEqual(sourceRequests, 1);
+      assert.strictEqual(redirectedRequests, 0);
     } finally {
       await close(source.server);
     }

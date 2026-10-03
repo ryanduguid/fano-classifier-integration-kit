@@ -8,6 +8,7 @@ build/
 .yarn/
 
 # Test outputs
+.test-build/
 coverage/
 .nyc_output/
 

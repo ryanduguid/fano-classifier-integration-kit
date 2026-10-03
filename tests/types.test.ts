@@ -1,12 +1,13 @@
 /**
  * Type-correctness compile checks for the canonical schema.
  *
- * vitest doesn't compile-check by default; we rely on `tsc --noEmit`
+ * Tests are compile-checked before execution and by `tsc --noEmit`
  * (the `lint` script) for type validation. This file additionally
  * encodes runtime invariants that the type definitions imply.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import type {
   LineItem,
   TrialBalancePayload,
@@ -26,8 +27,8 @@ describe('canonical type definitions', () => {
   it('SbrmCode template type accepts sbrm_NNNN patterns at compile-time', () => {
     const valid: SbrmCode = 'sbrm_1137';
     const valid2: SbrmCode = 'sbrm_4100';
-    expect(valid).toBe('sbrm_1137');
-    expect(valid2).toBe('sbrm_4100');
+    assert.strictEqual(valid, 'sbrm_1137');
+    assert.strictEqual(valid2, 'sbrm_4100');
   });
 
   it('Topology enum covers the 7 canonical values', () => {
@@ -40,7 +41,7 @@ describe('canonical type definitions', () => {
       'revenue',
       'expenses',
     ];
-    expect(topologies).toHaveLength(7);
+    assert.strictEqual(topologies.length, 7);
   });
 
   it('EntityStructure enum covers the 5 canonical values', () => {
@@ -51,12 +52,12 @@ describe('canonical type definitions', () => {
       'sole_trader',
       'super_fund',
     ];
-    expect(entities).toHaveLength(5);
+    assert.strictEqual(entities.length, 5);
   });
 
   it('FanoStatus enum has 3 canonical states', () => {
     const states: FanoStatus[] = ['accepted_fact', 'draft_fact', 'quarantine'];
-    expect(states).toHaveLength(3);
+    assert.strictEqual(states.length, 3);
   });
 
   it('WarningKind enum covers the 5 canonical warning types', () => {
@@ -67,12 +68,12 @@ describe('canonical type definitions', () => {
       'entity_conditional_drift',
       'subfloor_abstention',
     ];
-    expect(kinds).toHaveLength(5);
+    assert.strictEqual(kinds.length, 5);
   });
 
   it('WarningSeverity enum has 3 levels', () => {
     const severities: WarningSeverity[] = ['info', 'warn', 'halt'];
-    expect(severities).toHaveLength(3);
+    assert.strictEqual(severities.length, 3);
   });
 
   it('RepairClass enum has 4 actions', () => {
@@ -82,7 +83,7 @@ describe('canonical type definitions', () => {
       'verify_coa_config',
       'no_action_needed',
     ];
-    expect(classes).toHaveLength(4);
+    assert.strictEqual(classes.length, 4);
   });
 
   it('LineItem structurally matches the request schema', () => {
@@ -93,8 +94,8 @@ describe('canonical type definitions', () => {
       confidence: 0.95,
       amount: 1000.0,
     };
-    expect(line.predicted_code).toBe('sbrm_4100');
-    expect(line.source_topology).toBe('revenue');
+    assert.strictEqual(line.predicted_code, 'sbrm_4100');
+    assert.strictEqual(line.source_topology, 'revenue');
   });
 
   it('TrialBalancePayload composes LineItems + entity_structure', () => {
@@ -110,7 +111,7 @@ describe('canonical type definitions', () => {
         },
       ],
     };
-    expect(payload.lines).toHaveLength(1);
+    assert.strictEqual(payload.lines.length, 1);
   });
 
   it('LineResponse exposes Layer 1a operator pass-through + Layer 1b cascade', () => {
@@ -130,7 +131,7 @@ describe('canonical type definitions', () => {
       quarantine_reason: null,
       warnings: [],
     };
-    expect(response.cascade.aggregate_confidence).toBe(0.88);
+    assert.strictEqual(response.cascade.aggregate_confidence, 0.88);
   });
 
   it('Warning composes the 5 sub-objects (kind, severity, message, hypothesis, reason, journal)', () => {
@@ -160,10 +161,8 @@ describe('canonical type definitions', () => {
         repair_class: 'reclassify_topology',
       },
     };
-    expect(warning.disagreement_reason.l1_signal.confidence).toBe(0.88);
-    expect(warning.suggested_repair_journal.proposed_entry.debit.amount).toBe(
-      warning.suggested_repair_journal.proposed_entry.credit.amount,
-    );
+    assert.strictEqual(warning.disagreement_reason.l1_signal.confidence, 0.88);
+    assert.strictEqual(warning.suggested_repair_journal.proposed_entry.debit.amount, warning.suggested_repair_journal.proposed_entry.credit.amount);
   });
 });
 
@@ -187,8 +186,8 @@ describe('canonical schema invariants', () => {
       source_topology: operatorSubmission.source_topology,
       confidence: operatorSubmission.confidence,
     };
-    expect(expectedTopLevel.predicted_code).toBe('sbrm_4401');
-    expect(expectedTopLevel.source_topology).toBe('current_liabilities');
+    assert.strictEqual(expectedTopLevel.predicted_code, 'sbrm_4401');
+    assert.strictEqual(expectedTopLevel.source_topology, 'current_liabilities');
   });
 
   it('Layer 1b guarantee: cascade.* is always populated, even when matching operator', () => {
@@ -209,8 +208,8 @@ describe('canonical schema invariants', () => {
       quarantine_reason: null,
       warnings: [],
     };
-    expect(matchingResponse.cascade).toBeDefined();
-    expect(matchingResponse.cascade.predicted_code).toBe(matchingResponse.predicted_code);
+    assert.notStrictEqual(matchingResponse.cascade, undefined);
+    assert.strictEqual(matchingResponse.cascade.predicted_code, matchingResponse.predicted_code);
   });
 
   it('Warnings-empty guarantee: empty array iff full cascade-operator agreement above sub-floor', () => {
@@ -237,6 +236,6 @@ describe('canonical schema invariants', () => {
         },
       ],
     };
-    expect(fullAgreement.results[0]!.warnings).toEqual([]);
+    assert.deepStrictEqual(fullAgreement.results[0]!.warnings, []);
   });
 });

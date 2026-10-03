@@ -4,7 +4,8 @@
  * Uses a mock fetch implementation; no live production calls.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import {
   FanoClient,
   FanoApiError,
@@ -25,10 +26,10 @@ describe('buildEquilibriumSentinel', () => {
       amount: 1500.00,
     };
     const sentinel = buildEquilibriumSentinel(primary);
-    expect(sentinel.source_topology).toBe('current_liabilities');
-    expect(sentinel.predicted_code).toBe('sbrm_2266');
-    expect(sentinel.amount).toBe(-1500.00);
-    expect(sentinel.confidence).toBe(0.99);
+    assert.strictEqual(sentinel.source_topology, 'current_liabilities');
+    assert.strictEqual(sentinel.predicted_code, 'sbrm_2266');
+    assert.strictEqual(sentinel.amount, -1500.00);
+    assert.strictEqual(sentinel.confidence, 0.99);
   });
 
   it('produces contra-side sentinel for liability-side primary', () => {
@@ -40,9 +41,9 @@ describe('buildEquilibriumSentinel', () => {
       amount: 1000.00,
     };
     const sentinel = buildEquilibriumSentinel(primary);
-    expect(sentinel.source_topology).toBe('current_assets');
-    expect(sentinel.predicted_code).toBe('sbrm_1137');
-    expect(sentinel.amount).toBe(-1000.00);
+    assert.strictEqual(sentinel.source_topology, 'current_assets');
+    assert.strictEqual(sentinel.predicted_code, 'sbrm_1137');
+    assert.strictEqual(sentinel.amount, -1000.00);
   });
 
   it('handles negative-amount primary (Shape Alpha F3 case)', () => {
@@ -54,9 +55,9 @@ describe('buildEquilibriumSentinel', () => {
       amount: -500.50, // Shape Alpha negative-balance bank
     };
     const sentinel = buildEquilibriumSentinel(primary);
-    expect(sentinel.amount).toBe(500.50);
+    assert.strictEqual(sentinel.amount, 500.50);
     // Net sum = 0
-    expect(primary.amount + sentinel.amount).toBeCloseTo(0, 2);
+    assert.ok(Math.abs(primary.amount + sentinel.amount - 0) < 0.5 * 10 ** -2);
   });
 });
 
@@ -70,10 +71,10 @@ describe('wrapSingleLineProbe', () => {
       amount: 1000.00,
     };
     const payload = wrapSingleLineProbe(primary, 'company');
-    expect(payload.lines).toHaveLength(2);
-    expect(payload.entity_structure).toBe('company');
+    assert.strictEqual(payload.lines.length, 2);
+    assert.strictEqual(payload.entity_structure, 'company');
     const netSum = payload.lines.reduce((s, l) => s + l.amount, 0);
-    expect(netSum).toBeCloseTo(0, 2);
+    assert.ok(Math.abs(netSum - 0) < 0.5 * 10 ** -2);
   });
 });
 
@@ -92,8 +93,8 @@ describe('isLegacyResponse / isCanonicalResponse type guards', () => {
         },
       ],
     };
-    expect(isLegacyResponse(legacy)).toBe(true);
-    expect(isCanonicalResponse(legacy)).toBe(false);
+    assert.strictEqual(isLegacyResponse(legacy), true);
+    assert.strictEqual(isCanonicalResponse(legacy), false);
   });
 
   it('isCanonicalResponse detects cascade + warnings sub-objects', () => {
@@ -109,35 +110,35 @@ describe('isLegacyResponse / isCanonicalResponse type guards', () => {
         },
       ],
     };
-    expect(isCanonicalResponse(canonical)).toBe(true);
-    expect(isLegacyResponse(canonical)).toBe(false);
+    assert.strictEqual(isCanonicalResponse(canonical), true);
+    assert.strictEqual(isLegacyResponse(canonical), false);
   });
 
   it('both return false for malformed input', () => {
-    expect(isLegacyResponse(null)).toBe(false);
-    expect(isLegacyResponse({})).toBe(false);
-    expect(isLegacyResponse({ results: [] })).toBe(false);
-    expect(isCanonicalResponse('string')).toBe(false);
+    assert.strictEqual(isLegacyResponse(null), false);
+    assert.strictEqual(isLegacyResponse({}), false);
+    assert.strictEqual(isLegacyResponse({ results: [] }), false);
+    assert.strictEqual(isCanonicalResponse('string'), false);
   });
 });
 
 describe('FanoClient construction', () => {
   it('requires apiKey', () => {
-    expect(() => new FanoClient({ apiKey: '' })).toThrow('apiKey is required');
+    assert.throws(() => new FanoClient({ apiKey: '' }), (error: Error) => error.message.includes('apiKey is required'));
   });
 
   it('defaults schemaVersion to legacy', () => {
-    const client = new FanoClient({ apiKey: 'test-key', fetchImpl: vi.fn() });
-    expect(client).toBeDefined();
+    const client = new FanoClient({ apiKey: 'test-key', fetchImpl: async () => new Response() });
+    assert.notStrictEqual(client, undefined);
   });
 
   it('accepts canonical schemaVersion override', () => {
     const client = new FanoClient({
       apiKey: 'test-key',
       schemaVersion: 'canonical',
-      fetchImpl: vi.fn(),
+      fetchImpl: async () => new Response(),
     });
-    expect(client).toBeDefined();
+    assert.notStrictEqual(client, undefined);
   });
 });
 
@@ -161,7 +162,7 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
         },
       ],
     };
-    const mockFetch = vi.fn().mockResolvedValue({
+    const mockFetch = async () => ({
       ok: true,
       status: 200,
       json: async () => legacyResponse,
@@ -177,13 +178,13 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
         source_topology: 'current_liabilities', confidence: 0.7, amount: 0 }],
     });
     // Adapter applied: top-level = operator's submission
-    expect(result.results[0]!.predicted_code).toBe('sbrm_4401');
-    expect(result.results[0]!.cascade.predicted_code).toBe('sbrm_4100');
-    expect(result.results[0]!.warnings.length).toBeGreaterThan(0);
+    assert.strictEqual(result.results[0]!.predicted_code, 'sbrm_4401');
+    assert.strictEqual(result.results[0]!.cascade.predicted_code, 'sbrm_4100');
+    assert.ok(result.results[0]!.warnings.length > 0);
   });
 
   it('throws FanoApiError on HTTP 400 (equilibrium failure)', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
+    const mockFetch = async () => ({
       ok: false,
       status: 400,
       json: async () => ({ detail: 'Equilibrium Failure: Net balance is 100.00' }),
@@ -192,13 +193,11 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
       apiKey: 'test-key',
       fetchImpl: mockFetch as unknown as typeof fetch,
     });
-    await expect(
-      client.ingestTrialBalance({ entity_structure: 'company', lines: [] }),
-    ).rejects.toThrow(FanoApiError);
+    await assert.rejects(client.ingestTrialBalance({ entity_structure: 'company', lines: [] }), FanoApiError);
   });
 
   it('throws FanoApiError on HTTP 502 (substrate inconsistency)', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
+    const mockFetch = async () => ({
       ok: false,
       status: 502,
       json: async () => ({ detail: 'Cascade substrate inconsistency: L1 dispatch miss' }),
@@ -209,11 +208,11 @@ describe('FanoClient.ingestTrialBalance — schema dispatch', () => {
     });
     try {
       await client.ingestTrialBalance({ entity_structure: 'company', lines: [] });
-      expect.fail('should have thrown');
+      assert.fail('should have thrown');
     } catch (e) {
-      expect(e).toBeInstanceOf(FanoApiError);
-      expect((e as FanoApiError).httpStatus).toBe(502);
-      expect((e as FanoApiError).detail).toContain('Cascade substrate inconsistency');
+      assert.ok(e instanceof FanoApiError);
+      assert.strictEqual((e as FanoApiError).httpStatus, 502);
+      assert.ok((e as FanoApiError).detail.includes('Cascade substrate inconsistency'));
     }
   });
 });
@@ -250,7 +249,7 @@ describe('FanoClient.probeSingleLine', () => {
         },
       ],
     };
-    const mockFetch = vi.fn().mockResolvedValue({
+    const mockFetch = async () => ({
       ok: true,
       status: 200,
       json: async () => legacyResponse,
@@ -270,7 +269,7 @@ describe('FanoClient.probeSingleLine', () => {
       'company',
     );
     // Sentinel is the 2nd row but probeSingleLine returns results[0]
-    expect(result.description).toBe('Trading Revenue');
-    expect(result.predicted_code).toBe('sbrm_4100');
+    assert.strictEqual(result.description, 'Trading Revenue');
+    assert.strictEqual(result.predicted_code, 'sbrm_4100');
   });
 });

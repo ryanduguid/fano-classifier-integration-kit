@@ -99,6 +99,12 @@ Warnings can be empty for a firewall timeout. Always inspect the verdict and rea
 
 Submit a trial balance, inspect Fano's prediction and verdict, and review disagreements against source records. The consuming application owns approval and ledger posting. This kit does not implement an approval queue, a ledger write or a cryptographic approval signature.
 
+## Development checks
+
+Run `npm ci`, `npm run lint`, `npm run build` and `npm test`. Tests use Node's built-in runner and compile into an ignored `.test-build` directory. `npm run test:watch` recompiles and reruns the suite when a test or SDK source changes. Stop watch mode with Ctrl-C.
+
+The test tools require Node 18.19 or later within the Node 18 line or Node 20.11 or later within the Node 20 line. CI tests both Node 18 and Node 20. Node 18's test runner and timer mocks are experimental. These development requirements do not change the SDK's `node >=18.0.0` runtime requirement.
+
 ## Audience
 
 - **First adopter:** Daniyal's team at LodgeiT Labs (TypeScript stack)

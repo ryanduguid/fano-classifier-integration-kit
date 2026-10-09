@@ -1,5 +1,10 @@
 # fano-classifier-integration-kit
 
+**Fork status**
+
+[![Fork code quality](https://app.codacy.com/project/badge/Grade/843838de76ca4e1ba7223f0e9285d8b3?branch=main)](https://app.codacy.com/gh/ryanduguid/fano-classifier-integration-kit/dashboard)
+[![Fork CI](https://github.com/ryanduguid/fano-classifier-integration-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ryanduguid/fano-classifier-integration-kit/actions/workflows/ci.yml)
+
 **Integration kit for Fano, an SBRM classifier and firewall.**
 
 Fano returns its own classification for each trial-balance row. Your submitted classification is echoed in `operator_hint_*` fields. The returned `fano_status` applies to Fano's prediction. The SDK adapts this wire response into a different layout, described below.

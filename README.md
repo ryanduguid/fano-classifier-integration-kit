@@ -1,9 +1,12 @@
 # fano-classifier-integration-kit
 
+<div align="center">
+
 **Fork status**
 
-[![Fork code quality](https://img.shields.io/codacy/grade/843838de76ca4e1ba7223f0e9285d8b3/main?style=flat&labelColor=000000)](https://app.codacy.com/gh/ryanduguid/fano-classifier-integration-kit/dashboard)
-[![Fork CI](https://img.shields.io/github/actions/workflow/status/ryanduguid/fano-classifier-integration-kit/ci.yml?branch=main&label=CI&style=flat&labelColor=000000)](https://github.com/ryanduguid/fano-classifier-integration-kit/actions/workflows/ci.yml)
+[![Fork code quality](https://img.shields.io/codacy/grade/843838de76ca4e1ba7223f0e9285d8b3/main?style=flat&labelColor=000000)](https://app.codacy.com/gh/ryanduguid/fano-classifier-integration-kit/dashboard) [![Fork CI](https://img.shields.io/github/actions/workflow/status/ryanduguid/fano-classifier-integration-kit/ci.yml?branch=main&label=CI&style=flat&labelColor=000000)](https://github.com/ryanduguid/fano-classifier-integration-kit/actions/workflows/ci.yml)
+
+</div>
 
 **Integration kit for Fano, an SBRM classifier and firewall.**
 
